@@ -73,13 +73,14 @@ function icapi.extractIcon(exeFile)
   
   for i=1, NumberOfRvaAndSizes do
     DataDirectories[i] = {decodeNumber(exeFile:read(4)), decodeNumber(exeFile:read(4))}
+    print("DataDirectory #"..i,DataDirectories[i][1],DataDirectories[i][2])
   end
   
   --Sections Table
   local Sections = {}
   
   for i=1, NumberOfSections do
-    print("Section",i)
+    print("\n------=Section=------",i)
     
     local Section = {}
     
@@ -90,7 +91,6 @@ function icapi.extractIcon(exeFile)
         Section.Name = Section.Name .. char
       end
     end
-    print("Name",Section.Name)
     
     Section.VirtualSize = decodeNumber(exeFile:read(4))
     Section.VirtualAddress = decodeNumber(exeFile:read(4))
@@ -102,8 +102,31 @@ function icapi.extractIcon(exeFile)
     Section.NumberOfLinenumbers = decodeNumber(exeFile:read(2))
     Section.Characteristics = decodeNumber(exeFile:read(4))
     
+    for k,v in pairs(Section) do
+      print(k,v)
+    end
+    
     Sections[i] = Section
   end
+  
+  --Calculate the file offset to the resources data directory
+  local ResourcesOffset
+  do
+    local RVA = DataDirectories[3][1]
+    for id, Section in ipairs(Sections) do
+      if (Section.VirtualAddress <= RVA) and (RVA < (Section.VirtualAddress + Section.VirtualSize)) then
+        ResourcesOffset = Section.PointerToRawData + (RVA - Section.VirtualAddress)
+        break
+      end
+    end
+  end
+  
+  if not ResourcesOffset then return error("Failed to calculate ResourcesOffset") end
+  
+  --Seek into the resources data !
+  exeFile:seek(ResourcesOffset)
+  
+  print("Offset",ResourcesOffset)
 end
 
 return icapi
