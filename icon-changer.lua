@@ -76,6 +76,34 @@ function icapi.extractIcon(exeFile)
   end
   
   --Sections Table
+  local Sections = {}
+  
+  for i=1, NumberOfSections do
+    print("Section",i)
+    
+    local Section = {}
+    
+    Section.Name = ""
+    for i=1,8 do
+      local char = exeFile:read(1)
+      if char ~= "\0" then
+        Section.Name = Section.Name .. char
+      end
+    end
+    print("Name",Section.Name)
+    
+    Section.VirtualSize = decodeNumber(exeFile:read(4))
+    Section.VirtualAddress = decodeNumber(exeFile:read(4))
+    Section.SizeOfRawData = decodeNumber(exeFile:read(4))
+    Section.PointerToRawData = decodeNumber(exeFile:read(4))
+    Section.PointerToRelocations = decodeNumber(exeFile:read(4))
+    Section.PointerToLinenumbers = decodeNumber(exeFile:read(4))
+    Section.NumberOfRelocations = decodeNumber(exeFile:read(2))
+    Section.NumberOfLinenumbers = decodeNumber(exeFile:read(2))
+    Section.Characteristics = decodeNumber(exeFile:read(4))
+    
+    Sections[i] = Section
+  end
 end
 
 return icapi
