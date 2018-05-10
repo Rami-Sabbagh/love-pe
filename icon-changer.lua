@@ -4,9 +4,14 @@
 local iconChanger = require("icon-changer")
 
 local icodata = iconChanger.extractIcon(exeFile)
+
+- Reference:
+Version File Resource: https://msdn.microsoft.com/en-us/library/ms647001(v=vs.85).aspx
+
 ]]
 
 local bit = require("bit")
+local utf8 = require("utf8")
 
 local bor,band,lshift,rshift,tohex = bit.bor,bit.band,bit.lshift,bit.rshift,bit.tohex
 
@@ -26,7 +31,9 @@ local resourcesTypes = {
   "13",
   "Group Icons",
   "15",
-  "Version Information"
+  "Version Information",
+  "17","18","19","20","21","22","23",
+  "Manifests"
 }
 
 --==Internal Functions==--
@@ -47,8 +54,16 @@ local function decodeNumber(str,bigEndian)
 end
 
 local function convertUTF16(str16)
-  return str16--return str16:gsub("..","%1")
+  --return str16--return str16:gsub("..","%1")
+  local newstr = {}
+  for chars in string.gmatch(str16,"..") do
+    local unicode = decodeNumber(chars,true)
+    newstr[#newstr+1] = utf8.char(unicode)
+  end
+  return table.concat(newstr)
 end
+
+convertUTF16 = function(...) return ... end
 
 local function convertRVA2Offset(RVA,Sections)
   for id, Section in ipairs(Sections) do
@@ -134,7 +149,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       if ok then
         print("RVA OK")
         exeFile:seek(DataOffset)
-        Tree[Name.."_P_"..tohex(DataCodepage)] = convertUTF16(exeFile:read(DataSize))
+        Tree[Name] = convertUTF16(exeFile:read(DataSize))
       else
         print("RVA Failed",DataOffset)
         Tree[Name] = ""
