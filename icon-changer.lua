@@ -50,11 +50,7 @@ function icapi.extractIcon(exeFile)
   
   local NumberOfSections = decodeNumber(exeFile:read(2))
   
-  exeFile:read(12) --Skip 3 long values (12 bytes).
-  
-  local SizeOfOptionalHeader = decodeNumber(exeFile:read(2))
-  
-  exeFile:read(2) --Skip a short value (2 bytes) (Characteristics).
+  exeFile:read(16) --Skip 3 long values (12 bytes) and 2 short values (4 bytes).
   
   --PE Optional Header
   local PEOptionalHeaderSignature = decodeNumber(exeFile:read(2))
@@ -68,6 +64,18 @@ function icapi.extractIcon(exeFile)
   else
     return error("ROM images are not supported !")
   end
+  
+  exeFile:read(x64 and 106 or 90) --Skip 106 bytes for x64, and 90 bytes for x86
+  
+  local NumberOfRvaAndSizes = decodeNumber(exeFile:read(4))
+  
+  local DataDirectories = {}
+  
+  for i=1, NumberOfRvaAndSizes do
+    DataDirectories[i] = {decodeNumber(exeFile:read(4)), decodeNumber(exeFile:read(4))}
+  end
+  
+  --Sections Table
 end
 
 return icapi
