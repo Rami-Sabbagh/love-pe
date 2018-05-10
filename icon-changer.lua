@@ -8,7 +8,7 @@ local icodata = iconChanger.extractIcon(exeFile)
 
 local bit = require("bit")
 
-local bor,band,lshift,rshift = bit.bor,bit.band,bit.lshift,bit.rshift
+local bor,band,lshift,rshift,tohex = bit.bor,bit.band,bit.lshift,bit.rshift,bit.tohex
 
 --==Internal Functions==--
 
@@ -56,7 +56,18 @@ function icapi.extractIcon(exeFile)
   
   exeFile:read(2) --Skip a short value (2 bytes) (Characteristics).
   
+  --PE Optional Header
+  local PEOptionalHeaderSignature = decodeNumber(exeFile:read(2))
   
+  local x86, x64 --Executable arch
+  
+  if PEOptionalHeaderSignature == 267 then --It's x86
+    x86 = true
+  elseif PEOptionalHeaderSignature == 523 then --It's x64
+    x64 = true
+  else
+    return error("ROM images are not supported !")
+  end
 end
 
 return icapi
