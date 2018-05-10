@@ -1,3 +1,4 @@
+io.stdout:setvbuf("no")
 
 local iconChanger = require("icon-changer")
 
