@@ -1,13 +1,13 @@
 io.stdout:setvbuf("no")
 
-local iconChanger = require("icon-changer")
+local lovePE = require("love-pe")
 
 function love.load(args)
   love.graphics.setBackgroundColor(1,1,1,1)
   
   local exeFile = assert(love.filesystem.newFile("love.exe","r"))
   
-  local iconData = iconChanger.extractIcon(exeFile)
+  local iconData = lovePE.extractIcon(exeFile)
   
   if iconData then
     love.filesystem.write("Extracted Icon.ico",iconData)

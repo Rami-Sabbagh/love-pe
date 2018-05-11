@@ -1,9 +1,9 @@
 --love-icon-changer library by RamiLego4Game (Rami Sabbagh)
 --[[
 - Usage:
-local iconChanger = require("icon-changer")
+local lovePE = require("love-pe")
 
-local icodata = iconChanger.extractIcon(exeFile)
+local icodata = lovePE.extractIcon(exeFile)
 
 - Reference:
 Version File Resource: https://msdn.microsoft.com/en-us/library/ms647001(v=vs.85).aspx
