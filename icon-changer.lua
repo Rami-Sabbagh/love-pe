@@ -71,7 +71,7 @@ local function encodeNumber(num,len,bigEndian)
 end
 
 local function decodeUTF16(str16)
-  local giter = string.gmatch(str16,"...")
+  local giter = string.gmatch(str16,"..")
   local iter = function()
     local short = giter()
     if short then
@@ -220,6 +220,48 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   return Tree
 end
 
+local function getAnyValue(t)
+  for k,v in pairs(t) do
+    return v
+  end
+end
+
+local function extractGroupIcon(ResourcesTree,GroupID)
+  --Icon extraction process
+  local IconGroup = getAnyValue(ResourcesTree["Group Icons"][tostring(GroupID)])
+  
+  local Icons = {""}
+  
+  local o = 5 --String Offset
+  
+  --Read the icon header
+  local Count = decodeNumber(IconGroup:sub(o,o+1),true)
+  
+  o = o+2
+  
+  local DataOffset = 6 + 16*Count
+  
+  for i=1,Count do
+    o = o+12
+    
+    local IcoID = decodeNumber(IconGroup:sub(o,o+1),true)
+    
+    Icons[#Icons+1] = getAnyValue(ResourcesTree["Icons"][tostring(IcoID)])
+    
+    local Length = #Icons[#Icons]
+    
+    IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4) .. IconGroup:sub(o+2,-1)
+    
+    o = o + 4
+    
+    DataOffset = DataOffset + Length
+  end
+  
+  Icons[1] = IconGroup
+  
+  return table.concat(Icons)
+end
+
 --==User API==--
 
 local icapi = {}
@@ -312,6 +354,19 @@ function icapi.extractIcon(exeFile)
   
   local ResourcesTree = readResourceDirectoryTable(exeFile,Sections,ResourcesOffset,0)
   
+  local IconKeys,FirstIcon = {}
+  
+  for k,v in pairs(ResourcesTree["Group Icons"]) do
+    IconKeys[#IconKeys+1] = k
+    ResourcesTree["Group Icons"][k] = extractGroupIcon(ResourcesTree,k)
+    if not FirstIcon then FirstIcon = ResourcesTree["Group Icons"][k] end
+  end
+  
+  for k,v in pairs(IconKeys) do
+    ResourcesTree["Group Icons"][v..".ico"] = ResourcesTree["Group Icons"][v]
+    ResourcesTree["Group Icons"][v] = nil
+  end
+  
   local function writeTree(tree,path)
     for k,v in pairs(tree) do
       if type(v) == "table" then
@@ -325,46 +380,8 @@ function icapi.extractIcon(exeFile)
   
   writeTree(ResourcesTree,"/")
   
-  --Icon extraction process
-  local IconGroup = ResourcesTree["Group Icons"]["1"]["1033"]
+  return FirstIcon
   
-  --if true then return "MEH" end
-  
-  do
-    local Icons = {""}
-    
-    local o = 5 --String Offset
-    
-    --Read the icon header
-    local Count = decodeNumber(IconGroup:sub(o,o+1),true)
-    
-    o = o+2
-    
-    local DataOffset = 6 + 16*Count
-    
-    for i=1,Count do
-      o = o+12
-      
-      local IcoID = decodeNumber(IconGroup:sub(o,o+1),true)
-      print("IcoID",IcoID)
-      
-      if not ResourcesTree["Icons"][tostring(IcoID)] then error(IcoID) end
-      
-      Icons[#Icons+1] = ResourcesTree["Icons"][tostring(IcoID)]["1033"]
-      
-      local Length = #Icons[#Icons]
-      
-      IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4) .. IconGroup:sub(o+2,-1)
-      
-      o = o + 4
-      
-      DataOffset = DataOffset + Length
-    end
-    
-    Icons[1] = IconGroup
-    
-    return table.concat(Icons)
-  end
 end
 
 return icapi
