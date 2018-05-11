@@ -17,24 +17,24 @@ local utf8 = require("utf8")
 local bor,band,lshift,rshift,tohex = bit.bor,bit.band,bit.lshift,bit.rshift,bit.tohex
 
 local resourcesTypes = {
-  "Cursors",
-  "Bitmaps",
-  "Icons",
-  "Menus",
-  "Dialogs",
-  "String Tables",
-  "Font Directories",
-  "Fonts",
-  "Accelerators",
-  "Unformatted Resource Datas",
-  "Message Tables",
-  "Group Cursors",
+  "CURSOR",
+  "BITMAP",
+  "ICON",
+  "MENU",
+  "DIALOG",
+  "STRING_TABLE",
+  "FONT_DIRECTORY",
+  "FONT",
+  "ACCELERATORS",
+  "UNFORMATTED_RESOURCE_DATA",
+  "MESSAGE_TABLE",
+  "GROUP_CURSOR",
   "13",
-  "Group Icons",
+  "GROUP_ICON",
   "15",
-  "Version Information",
+  "VERSION_INFORMATION",
   "17","18","19","20","21","22","23",
-  "Manifests"
+  "MANIFEST"
 }
 
 --==Internal Functions==--
@@ -228,7 +228,7 @@ end
 
 local function extractGroupIcon(ResourcesTree,GroupID)
   --Icon extraction process
-  local IconGroup = getAnyValue(ResourcesTree["Group Icons"][tostring(GroupID)])
+  local IconGroup = getAnyValue(ResourcesTree["GROUP_ICON"][tostring(GroupID)])
   
   local Icons = {""}
   
@@ -246,7 +246,7 @@ local function extractGroupIcon(ResourcesTree,GroupID)
     
     local IcoID = decodeNumber(IconGroup:sub(o,o+1),true)
     
-    Icons[#Icons+1] = getAnyValue(ResourcesTree["Icons"][tostring(IcoID)])
+    Icons[#Icons+1] = getAnyValue(ResourcesTree["ICON"][tostring(IcoID)])
     
     local Length = #Icons[#Icons]
     
@@ -356,15 +356,15 @@ function icapi.extractIcon(exeFile)
   
   local IconKeys,FirstIcon = {}
   
-  for k,v in pairs(ResourcesTree["Group Icons"]) do
+  for k,v in pairs(ResourcesTree["GROUP_ICON"]) do
     IconKeys[#IconKeys+1] = k
-    ResourcesTree["Group Icons"][k] = extractGroupIcon(ResourcesTree,k)
-    if not FirstIcon then FirstIcon = ResourcesTree["Group Icons"][k] end
+    ResourcesTree["GROUP_ICON"][k] = extractGroupIcon(ResourcesTree,k)
+    if not FirstIcon then FirstIcon = ResourcesTree["GROUP_ICON"][k] end
   end
   
   for k,v in pairs(IconKeys) do
-    ResourcesTree["Group Icons"][v..".ico"] = ResourcesTree["Group Icons"][v]
-    ResourcesTree["Group Icons"][v] = nil
+    ResourcesTree["GROUP_ICON"][v..".ico"] = ResourcesTree["GROUP_ICON"][v]
+    ResourcesTree["GROUP_ICON"][v] = nil
   end
   
   local function writeTree(tree,path)
