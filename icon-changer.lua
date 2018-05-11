@@ -38,10 +38,10 @@ local resourcesTypes = {
 
 --==Internal Functions==--
 
-local function decodeNumber(str,bigEndian)
+local function decodeNumber(str,littleEndian)
   local num = 0
   
-  if bigEndian then str = str:reverse() end
+  if littleEndian then str = str:reverse() end
   
   for char in string.gmatch(str,".") do
     local byte = string.byte(char)
@@ -53,17 +53,73 @@ local function decodeNumber(str,bigEndian)
   return num
 end
 
-local function convertUTF16(str16)
-  --return str16--return str16:gsub("..","%1")
-  local newstr = {}
-  for chars in string.gmatch(str16,"..") do
-    local unicode = decodeNumber(chars,true)
-    newstr[#newstr+1] = utf8.char(unicode)
+local function encodeNumber(num,len,bigEndian)
+  
+  local chars = {}
+  
+  for i=1,len do
+    chars[#chars+1] = string.char(band(num,255))
+    num = rshift(num,8)
   end
-  return table.concat(newstr)
+  
+  chars = table.concat(chars)
+  
+  if bigEndian then chars = chars:reverse() end
+  
+  return chars
 end
 
-convertUTF16 = function(...) return ... end
+local function decodeUTF16(str16)
+  local giter = string.gmatch(str16,"...")
+  local iter = function()
+    local short = giter()
+    if short then
+      return decodeNumber(short,true)
+    end
+  end
+  
+  local nstr = {}
+  
+  local unicode = iter()
+  
+  while unicode do
+    --Surrogate pairs
+    if unicode >= 0xD800 and unicode <= 0xDBFF then
+      local lowPair = iter()
+      
+      if lowPair and lowPair >= 0xDC00 and lowPair <= 0xDFFF then
+        unicode = lshift(unicode-0xD800,10) + (lowPair-0xDC00)
+        nstr[#nstr+1] = utf8.char(unicode)
+        unicode = iter()
+      else --Unpaired surrogate
+        nstr[#nstr+1] = utf8.char(unicode)
+        unicode = lowPair
+      end
+    else
+      nstr[#nstr+1] = utf8.char(unicode)
+      unicode = iter()
+    end
+  end
+  
+  return table.concat(nstr)
+end
+
+local function encodeUTF16(str8)
+  
+  local nstr ={}
+  
+  for pos, unicode in utf8.codes(str8) do
+    if unicode >= 0x10000 then --Encode as surrogate pair
+      unicode = unicode - 0x01000
+      nstr[#nstr+1] = encodeNumber(rshift(unicode,10)+0xD800,2)
+      nstr[#nstr+1] = encodeNumber(band(unicode,0x3FF)+0xDC00,2)
+    else
+      nstr[#nstr+1] = encodeNumber(unicode,2)
+    end
+  end
+  
+  return table.concat(nstr)
+end
 
 local function convertRVA2Offset(RVA,Sections)
   for id, Section in ipairs(Sections) do
@@ -109,9 +165,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       
       local NameLength = decodeNumber(exeFile:read(2))
       --Decode UTF-16LE string
-      --Name = exeFile:read(NameLength*2)
-      Name = string.char(math.random(65,90),math.random(65,90),math.random(65,90),math.random(65,90))
-      
+      Name = decodeUTF16(exeFile:read(NameLength*2))
     else
       --Name is an ID
       Name = band(Name,0xFFFF)
@@ -144,16 +198,9 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       
       print("Data",tohex(DataRVA),DataSize)
       
-      local ok, DataOffset = pcall(convertRVA2Offset,DataRVA,Sections)
+      local DataOffset = convertRVA2Offset(DataRVA,Sections)
       
-      if ok then
-        print("RVA OK")
-        exeFile:seek(DataOffset)
-        Tree[Name] = convertUTF16(exeFile:read(DataSize))
-      else
-        print("RVA Failed",DataOffset)
-        Tree[Name] = ""
-      end
+      Tree[Name] = exeFile:read(DataSize)
     end
     
     exeFile:seek(ReturnOffset)
