@@ -179,6 +179,8 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
           print("Unkown type")
         end
       end
+      
+      Name = tostring(Name)
     end
     
     if band(Offset,0x80000000) ~= 0 then
@@ -316,7 +318,45 @@ function icapi.extractIcon(exeFile)
   
   writeTree(ResourcesTree,"/")
   
-  return "MEH"
+  --Icon extraction process
+  local IconGroup = ResourcesTree["Group Icons"]["1"]["1033"]
+  
+  do
+    local Icons = {""}
+    
+    local o = 5 --String Offset
+    
+    --Read the icon header
+    local Count = decodeNumber(IconGroup:sub(o,o+1))
+    
+    error(Count)
+    
+    o = o+2
+    
+    local DataOffset = 6 + 16*Count
+    
+    for i=1,Count do
+      o = o+12
+      
+      local IcoID = decodeNumber(IconGroup:sub(o,o+1))
+      
+      if not ResourcesTree["Icons"][tostring(IcoID)] then error(IcoID) end
+      
+      Icons[#Icons+1] = ResourcesTree["Icons"][tostring(IcoID)]["1033"]
+      
+      local Length = #Icons[#Icons]
+      
+      IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4,true) .. IconGroup:sub(o+2,-1)
+      
+      o = o + 4
+      
+      DataOffset = DataOffset + Length
+    end
+    
+    Icons[1] = IconGroup
+    
+    return table.concat(Icons)
+  end
 end
 
 return icapi
