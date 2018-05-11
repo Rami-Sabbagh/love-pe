@@ -7,4 +7,9 @@ The current goal of the project is to make it possible to replace the icon.
 ## Current Achievements:
 - Parses the DataDirectory and the Sections Table of a PE (exe/dll) file.
 - Parses the resources directory and extracts it.
-- 
+- Parses the `ICON_GROUP` and converts it into viewable .ICO
+
+## What will it do when running it:
+
+It will extract the resources of `love.exe` (11.1 32-bit), and save the main ICON as `Extracted Icon.ico`.
+Once done it will open it's appdata folder with all this in it !
