@@ -13,3 +13,5 @@ The current goal of the project is to make it possible to replace the icon.
 
 It will extract the resources of `love.exe` (11.1 32-bit), and save the main ICON as `Extracted Icon.ico`.
 Once done it will open it's appdata folder with all this in it !
+
+![Demonstaion GIF](DemoGif.gif)
