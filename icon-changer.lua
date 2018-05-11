@@ -7,7 +7,8 @@ local icodata = iconChanger.extractIcon(exeFile)
 
 - Reference:
 Version File Resource: https://msdn.microsoft.com/en-us/library/ms647001(v=vs.85).aspx
-
+Icons:
+https://msdn.microsoft.com/en-us/library/ms997538.aspx
 ]]
 
 local bit = require("bit")
@@ -202,6 +203,12 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       
       local DataOffset = convertRVA2Offset(DataRVA,Sections)
       
+      print("Data RVA Offset",DataRVA,DataOffset)
+      
+      print("Data Codepage",DataCodepage)
+      
+      exeFile:seek(DataOffset)
+      
       Tree[Name] = exeFile:read(DataSize)
     end
     
@@ -321,15 +328,15 @@ function icapi.extractIcon(exeFile)
   --Icon extraction process
   local IconGroup = ResourcesTree["Group Icons"]["1"]["1033"]
   
+  --if true then return "MEH" end
+  
   do
     local Icons = {""}
     
     local o = 5 --String Offset
     
     --Read the icon header
-    local Count = decodeNumber(IconGroup:sub(o,o+1))
-    
-    error(Count)
+    local Count = decodeNumber(IconGroup:sub(o,o+1),true)
     
     o = o+2
     
@@ -338,7 +345,8 @@ function icapi.extractIcon(exeFile)
     for i=1,Count do
       o = o+12
       
-      local IcoID = decodeNumber(IconGroup:sub(o,o+1))
+      local IcoID = decodeNumber(IconGroup:sub(o,o+1),true)
+      print("IcoID",IcoID)
       
       if not ResourcesTree["Icons"][tostring(IcoID)] then error(IcoID) end
       
@@ -346,7 +354,7 @@ function icapi.extractIcon(exeFile)
       
       local Length = #Icons[#Icons]
       
-      IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4,true) .. IconGroup:sub(o+2,-1)
+      IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4) .. IconGroup:sub(o+2,-1)
       
       o = o + 4
       
