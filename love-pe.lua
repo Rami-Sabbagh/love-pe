@@ -89,7 +89,7 @@ local function decodeUTF16(str16)
       local lowPair = iter()
       
       if lowPair and lowPair >= 0xDC00 and lowPair <= 0xDFFF then
-        unicode = lshift(unicode-0xD800,10) + (lowPair-0xDC00)
+        unicode = lshift(unicode-0xD800,10) + (lowPair-0xDC00) + 0x01000
         nstr[#nstr+1] = utf8.char(unicode)
         unicode = iter()
       else --Unpaired surrogate
