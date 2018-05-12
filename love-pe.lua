@@ -134,8 +134,6 @@ end
 local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   local Tree = {}
   
-  print("---readResourceDirectoryTable",RootOffset)
-  
   local Characteristics = decodeNumber(exeFile:read(4))
   local TimeDateStamp = decodeNumber(exeFile:read(4))
   local MajorVersion = decodeNumber(exeFile:read(2))
@@ -143,22 +141,15 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   local NumberOfNameEntries = decodeNumber(exeFile:read(2))
   local NumberOfIDEntries = decodeNumber(exeFile:read(2))
   
-  print("Entries:", NumberOfNameEntries+NumberOfIDEntries)
-  
   --Parse Entries
   for i=1,NumberOfNameEntries+NumberOfIDEntries do
-    print("Entry #"..i)
-    
     local Name = decodeNumber(exeFile:read(4))
     local Offset = decodeNumber(exeFile:read(4))
-    
-    print("Offset",tohex(Offset))
     
     local ReturnOffset = exeFile:tell()
     
     --Parse name/id for entry
     if band(Name,0x80000000) ~= 0 then
-      print("String Name")
       --Name is a string RVA
       local NameOffset = convertRVA2Offset(RootOffset + band(Name,0x7FFFFFFF), Sections)
       
@@ -170,14 +161,10 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
     else
       --Name is an ID
       Name = band(Name,0xFFFF)
-      print("Number Name",Name)
       
       if Level == 0 then
         if resourcesTypes[Name] then
           Name = resourcesTypes[Name]
-          print("# New name",Name)
-        else
-          print("Unkown type")
         end
       end
       
@@ -185,13 +172,11 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
     end
     
     if band(Offset,0x80000000) ~= 0 then
-      print("Another Directory")
       --Another directory
       exeFile:seek(RootOffset + band(Offset,0x7FFFFFFF))
       
       Tree[Name] = readResourceDirectoryTable(exeFile,Sections,RootOffset,Level+1)
     else
-      print("Data Offset",RootOffset + band(Offset,0x7FFFFFFF))
       --Data offset
       exeFile:seek(RootOffset + band(Offset,0x7FFFFFFF))
       
@@ -199,13 +184,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       local DataSize = decodeNumber(exeFile:read(4))
       local DataCodepage = decodeNumber(exeFile:read(4))
       
-      print("Data",tohex(DataRVA),DataSize)
-      
       local DataOffset = convertRVA2Offset(DataRVA,Sections)
-      
-      print("Data RVA Offset",DataRVA,DataOffset)
-      
-      print("Data Codepage",DataCodepage)
       
       exeFile:seek(DataOffset)
       
@@ -214,8 +193,6 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
     
     exeFile:seek(ReturnOffset)
   end
-  
-  print("--End of tree")
   
   return Tree
 end
@@ -262,6 +239,55 @@ local function extractGroupIcon(ResourcesTree,GroupID)
   return table.concat(Icons)
 end
 
+local function skipDOSHeader(exeFile)
+  if exeFile:read(2) ~= "MZ" then error("This is not an executable file !",3) end
+  
+  exeFile:read(58) --Skip 58 bytes
+  
+  local PEHeaderOffset = decodeNumber(exeFile:read(4),true) --Offset to the 'PE\0\0' signature relative to the beginning of the file
+  
+  exeFile:seek(PEHeaderOffset) --Seek into the PE Header
+end
+
+local function skipPEHeader(exeFile)
+  if exeFile:read(4) ~= "PE\0\0" then error("Corrupted executable file !",3) end
+end
+
+local function parseCOFFHeader(exeFile)
+  --Corrently only parses the NumberOfSections value, and skips the rest.
+  local values = {}
+  
+  exeFile:read(2) --Skip Machine.
+  
+  values.NumberOfSections = decodeNumber(exeFile:read(2))
+  
+  exeFile:read(16) --Skip 3 long values (12 bytes) and 2 short values (4 bytes).
+  
+  return values
+end
+
+local function parsePEOptHeader(exeFile)
+  local values = {}
+  
+  local PEOptionalHeaderSignature = decodeNumber(exeFile:read(2))
+  
+  values.x86, values.x64 = false, false --Executable arch
+  
+  if PEOptionalHeaderSignature == 267 then --It's x86
+    values.x86 = true
+  elseif PEOptionalHeaderSignature == 523 then --It's x64
+    values.x64 = true
+  else
+    error("ROM images are not supported !",3)
+  end
+  
+  exeFile:read(values.x64 and 106 or 90) --Skip 106 bytes for x64, and 90 bytes for x86
+  
+  values.NumberOfRvaAndSizes = decodeNumber(exeFile:read(4))
+  
+  return values
+end
+
 --==User API==--
 
 local icapi = {}
@@ -269,40 +295,16 @@ local icapi = {}
 function icapi.extractIcon(exeFile)
   
   --DOS Header
-  if exeFile:read(2) ~= "MZ" then return error("This is not an executable file !") end
-  
-  exeFile:read(58) --Skip 58 bytes
-  
-  local PEHeaderOffset = decodeNumber(exeFile:read(4),true) --Offset to the 'PE\0\0' signature relative to the beginning of the file
-  
-  exeFile:seek(PEHeaderOffset) --Seek into the PE Header
+  skipDOSHeader(exeFile)
   
   --PE Header
-  if exeFile:read(4) ~= "PE\0\0" then return error("Corrupted executable file !") end
+  skipPEHeader(exeFile)
   
   --COFF Header
-  exeFile:read(2) --Skip Machine.
-  
-  local NumberOfSections = decodeNumber(exeFile:read(2))
-  
-  exeFile:read(16) --Skip 3 long values (12 bytes) and 2 short values (4 bytes).
+  local NumberOfSections = parseCOFFHeader(exeFile).NumberOfSections
   
   --PE Optional Header
-  local PEOptionalHeaderSignature = decodeNumber(exeFile:read(2))
-  
-  local x86, x64 --Executable arch
-  
-  if PEOptionalHeaderSignature == 267 then --It's x86
-    x86 = true
-  elseif PEOptionalHeaderSignature == 523 then --It's x64
-    x64 = true
-  else
-    return error("ROM images are not supported !")
-  end
-  
-  exeFile:read(x64 and 106 or 90) --Skip 106 bytes for x64, and 90 bytes for x86
-  
-  local NumberOfRvaAndSizes = decodeNumber(exeFile:read(4))
+  local NumberOfRvaAndSizes = parsePEOptHeader(exeFile).NumberOfRvaAndSizes
   
   local DataDirectories = {}
   
@@ -349,8 +351,6 @@ function icapi.extractIcon(exeFile)
   
   --Seek into the resources data !
   exeFile:seek(ResourcesOffset)
-  
-  print("Offset",ResourcesOffset)
   
   local ResourcesTree = readResourceDirectoryTable(exeFile,Sections,ResourcesOffset,0)
   
