@@ -144,6 +144,8 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   local NumberOfNameEntries = decodeNumber(exeFile:read(2),true)
   local NumberOfIDEntries = decodeNumber(exeFile:read(2),true)
   
+  print("--readResourceDirectoryTable",RootOffset,Level,MajorVersion,MinorVersion,TimeDateStamp,NumberOfNameEntries,NumberOfIDEntries)
+  
   --Parse Entries
   for i=1,NumberOfNameEntries+NumberOfIDEntries do
     local Name = decodeNumber(exeFile:read(4),true)
@@ -161,6 +163,8 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       local NameLength = decodeNumber(exeFile:read(2),true)
       --Decode UTF-16LE string
       Name = decodeUTF16(exeFile:read(NameLength*2))
+      
+      print("Name Entry",Name)
     else
       --Name is an ID
       Name = band(Name,0xFFFF)
@@ -170,11 +174,14 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
           Name = resourcesTypes[Name]
         end
       end
+      print("ID Entry",Name)
     end
     
     if band(Offset,0x80000000) ~= 0 then
       --Another directory
       exeFile:seek(RootOffset + band(Offset,0x7FFFFFFF))
+      
+      print("Another Directory")
       
       Tree[Name] = readResourceDirectoryTable(exeFile,Sections,RootOffset,Level+1)
     else
@@ -185,6 +192,9 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       local DataSize = decodeNumber(exeFile:read(4),true)
       local DataCodepage = decodeNumber(exeFile:read(4),true)
       
+      print("DATA",DataRVA,DataSize,DataCodepage)
+      if DataCodepage ~= 0 then print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!") end
+      
       local DataOffset = convertRVA2Offset(DataRVA,Sections)
       
       exeFile:seek(DataOffset)
@@ -194,6 +204,8 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
     
     exeFile:seek(ReturnOffset)
   end
+  
+  print("---Directory end")
   
   return Tree
 end
@@ -220,10 +232,12 @@ local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
       end
     end
     
+    table.sort(IDEntries,function(a,b) return a[1] < b[1] end)
+    
     --Write the resource directory table
     Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Characteristics
-    Data[#Data+1] = encodeNumber(os.time(),4,false) Offset = Offset + 4 --Time/Date Stamp
-    Data[#Data+1] = encodeNumber(1,2,false) Offset = Offset + 2 --Major Version
+    Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Time/Date Stamp
+    Data[#Data+1] = encodeNumber(0,2,false) Offset = Offset + 2 --Major Version
     Data[#Data+1] = encodeNumber(0,2,false) Offset = Offset + 2 --Minor Version
     Data[#Data+1] = encodeNumber(#NameEntries,2,false) Offset = Offset + 2 --Number of name entries
     Data[#Data+1] = encodeNumber(#IDEntries,2,false) Offset = Offset + 2 --Number of ID entries
@@ -277,13 +291,13 @@ local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
     end
     
     for _, Entry in ipairs(NameEntries) do
-      Data[EntriesID+1] = Entry[3]; EntriesID = EntriesID + 1
-      Data[EntriesID+1] = Entry[4]; EntriesID = EntriesID + 1
+      Data[EntriesID+1] = encodeNumber(Entry[3],4,false); EntriesID = EntriesID + 1
+      Data[EntriesID+1] = encodeNumber(Entry[4],4,false); EntriesID = EntriesID + 1
     end
     
     for _, Entry in ipairs(IDEntries) do
-      Data[EntriesID+1] = Entry[3]; EntriesID = EntriesID + 1
-      Data[EntriesID+1] = Entry[4]; EntriesID = EntriesID + 1
+      Data[EntriesID+1] = encodeNumber(Entry[3],4,false); EntriesID = EntriesID + 1
+      Data[EntriesID+1] = encodeNumber(Entry[4],4,false); EntriesID = EntriesID + 1
     end
     
     Level = Level - 1
@@ -653,6 +667,8 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   --Parse the resources data
   local ResourcesTree = readResourceDirectoryTable(exeFile,Sections,ResourcesOffset,0)
   
+  writeTree(ResourcesTree,"/!NEW RES/")
+  
   print("Finished reading...")
   
   local GroupID = getAnyKey(ResourcesTree["GROUP_ICON"])
@@ -682,10 +698,10 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   print("NEW OLD OFFSET",NewRSRCSize,OldRSRCSize,ShiftOffset)
   
   DataDirectories[3][2] = NewRSRCSize
-  Sections[RSRC_ID].VirtualSize = Sections[RSRC_ID].VirtualSize + ShiftOffset
+  --Sections[RSRC_ID].VirtualSize = Sections[RSRC_ID].VirtualSize + ShiftOffset
   Sections[RSRC_ID].SizeOfRawData = Sections[RSRC_ID].SizeOfRawData + ShiftOffset
   
-  local RSRC_Pointer = Sections[RSRC_ID].PointerToRawData
+  --[[local RSRC_Pointer = Sections[RSRC_ID].PointerToRawData
   
   for id, Section in ipairs(Sections) do
     if Sections[id].PointerToRawData > RSRC_Pointer then
@@ -698,6 +714,12 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
       Sections[id].PointerToLinenumbers = Sections[id].PointerToLinenumbers + ShiftOffset
     end
   end
+  
+  for id, Directory in ipairs(DataDirectories) do
+    if Directory[1] > Sections[RSRC_ID].VirtualAddress then
+      Directory[1] = Directory[1] + ShiftOffset
+    end
+  end]]
   
   print("Writing the DOS,PE,COFF and PEOpt headers...",DataDirectoriesOffset)
   
