@@ -629,7 +629,7 @@ function icapi.extractIcon(exeFile)
     ResourcesTree["GROUP_ICON"][v] = nil
   end
   
-  writeTree(ResourcesTree,"/")
+  --writeTree(ResourcesTree,"/")
   
   return FirstIcon
   
@@ -673,7 +673,7 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   --Parse the resources data
   local ResourcesTree = readResourceDirectoryTable(exeFile,Sections,ResourcesOffset,0)
   
-  writeTree(ResourcesTree,"/!NEW RES/")
+  --writeTree(ResourcesTree,"/!NEW RES/")
   
   local GroupID = getAnyKey(ResourcesTree["GROUP_ICON"])
   
