@@ -115,10 +115,10 @@ local function encodeUTF16(str8)
   for pos, unicode in utf8.codes(str8) do
     if unicode >= 0x10000 then --Encode as surrogate pair
       unicode = unicode - 0x01000
-      nstr[#nstr+1] = encodeNumber(rshift(unicode,10)+0xD800,2)
-      nstr[#nstr+1] = encodeNumber(band(unicode,0x3FF)+0xDC00,2)
+      nstr[#nstr+1] = encodeNumber(rshift(unicode,10)+0xD800,2,false)
+      nstr[#nstr+1] = encodeNumber(band(unicode,0x3FF)+0xDC00,2,false)
     else
-      nstr[#nstr+1] = encodeNumber(unicode,2)
+      nstr[#nstr+1] = encodeNumber(unicode,2,false)
     end
   end
   
@@ -137,17 +137,17 @@ end
 local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   local Tree = {}
   
-  local Characteristics = decodeNumber(exeFile:read(4))
-  local TimeDateStamp = decodeNumber(exeFile:read(4))
-  local MajorVersion = decodeNumber(exeFile:read(2))
-  local MinorVersion = decodeNumber(exeFile:read(2))
-  local NumberOfNameEntries = decodeNumber(exeFile:read(2))
-  local NumberOfIDEntries = decodeNumber(exeFile:read(2))
+  local Characteristics = decodeNumber(exeFile:read(4),true)
+  local TimeDateStamp = decodeNumber(exeFile:read(4),true)
+  local MajorVersion = decodeNumber(exeFile:read(2),true)
+  local MinorVersion = decodeNumber(exeFile:read(2),true)
+  local NumberOfNameEntries = decodeNumber(exeFile:read(2),true)
+  local NumberOfIDEntries = decodeNumber(exeFile:read(2),true)
   
   --Parse Entries
   for i=1,NumberOfNameEntries+NumberOfIDEntries do
-    local Name = decodeNumber(exeFile:read(4))
-    local Offset = decodeNumber(exeFile:read(4))
+    local Name = decodeNumber(exeFile:read(4),true)
+    local Offset = decodeNumber(exeFile:read(4),true)
     
     local ReturnOffset = exeFile:tell()
     
@@ -158,7 +158,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       
       exeFile:seek(NameOffset)
       
-      local NameLength = decodeNumber(exeFile:read(2))
+      local NameLength = decodeNumber(exeFile:read(2),true)
       --Decode UTF-16LE string
       Name = decodeUTF16(exeFile:read(NameLength*2))
     else
@@ -181,9 +181,9 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       --Data offset
       exeFile:seek(RootOffset + band(Offset,0x7FFFFFFF))
       
-      local DataRVA = decodeNumber(exeFile:read(4))
-      local DataSize = decodeNumber(exeFile:read(4))
-      local DataCodepage = decodeNumber(exeFile:read(4))
+      local DataRVA = decodeNumber(exeFile:read(4),true)
+      local DataSize = decodeNumber(exeFile:read(4),true)
+      local DataCodepage = decodeNumber(exeFile:read(4),true)
       
       local DataOffset = convertRVA2Offset(DataRVA,Sections)
       
@@ -221,12 +221,12 @@ local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
     end
     
     --Write the resource directory table
-    Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Characteristics
-    Data[#Data+1] = encodeNumber(os.time(),4,true) Offset = Offset + 4 --Time/Date Stamp
-    Data[#Data+1] = encodeNumber(1,2,true) Offset = Offset + 2 --Major Version
-    Data[#Data+1] = encodeNumber(0,2,true) Offset = Offset + 2 --Minor Version
-    Data[#Data+1] = encodeNumber(#NameEntries,2,true) Offset = Offset + 2 --Number of name entries
-    Data[#Data+1] = encodeNumber(#IDEntries,2,true) Offset = Offset + 2 --Number of ID entries
+    Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Characteristics
+    Data[#Data+1] = encodeNumber(os.time(),4,false) Offset = Offset + 4 --Time/Date Stamp
+    Data[#Data+1] = encodeNumber(1,2,false) Offset = Offset + 2 --Major Version
+    Data[#Data+1] = encodeNumber(0,2,false) Offset = Offset + 2 --Minor Version
+    Data[#Data+1] = encodeNumber(#NameEntries,2,false) Offset = Offset + 2 --Number of name entries
+    Data[#Data+1] = encodeNumber(#IDEntries,2,false) Offset = Offset + 2 --Number of ID entries
     
     local EntriesID = #Data --Where the entries data start
     
@@ -242,7 +242,7 @@ local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
       local StringRVA = VirtualAddress+Offset
       local String = encodeUTF16(Entry[1])
       
-      Data[#Data+1] = encodeNumber(#String/2,2,true) Offset = Offset + 2 --String Length
+      Data[#Data+1] = encodeNumber(#String/2,2,false) Offset = Offset + 2 --String Length
       Data[#Data+1] = String; Offset = Offset + #String --Unicode String
       
       Entry[3] = StringRVA + 0x80000000 --A string name
@@ -252,10 +252,10 @@ local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
         Entry[4] = Entry[4] + 0x80000000 --Set sub-directory flag
         writeDirectory(Entry[2])
       else --Data
-        Data[#Data+1] = encodeNumber(VirtualAddress+Offset+16,4,true) Offset = Offset + 4 --Predict the DataRVA
-        Data[#Data+1] = encodeNumber(#Entry[2],4,true) Offset = Offset + 4 --Size
-        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Codepoint
-        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Reserved
+        Data[#Data+1] = encodeNumber(VirtualAddress+Offset+16,4,false) Offset = Offset + 4 --Predict the DataRVA
+        Data[#Data+1] = encodeNumber(#Entry[2],4,false) Offset = Offset + 4 --Size
+        Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Codepoint
+        Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Reserved
         Data[#Data+1] = Entry[2]; Offset = Offset + #Entry[2] --The actual data
       end
     end
@@ -268,10 +268,10 @@ local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
         Entry[4] = Entry[4] + 0x80000000 --Set sub-directory flag
         writeDirectory(Entry[2])
       else --Data
-        Data[#Data+1] = encodeNumber(VirtualAddress+Offset+16,4,true) Offset = Offset + 4 --Predict the DataRVA
-        Data[#Data+1] = encodeNumber(#Entry[2],4,true) Offset = Offset + 4 --Size
-        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Codepoint
-        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Reserved
+        Data[#Data+1] = encodeNumber(VirtualAddress+Offset+16,4,false) Offset = Offset + 4 --Predict the DataRVA
+        Data[#Data+1] = encodeNumber(#Entry[2],4,false) Offset = Offset + 4 --Size
+        Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Codepoint
+        Data[#Data+1] = encodeNumber(0,4,false) Offset = Offset + 4 --Reserved
         Data[#Data+1] = Entry[2]; Offset = Offset + #Entry[2] --The actual data
       end
     end
@@ -332,7 +332,7 @@ local function extractGroupIcon(ResourcesTree,GroupID)
     
     local Length = #Icons[#Icons]
     
-    IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4) .. IconGroup:sub(o+2,-1)
+    IconGroup = IconGroup:sub(1,o-1) .. encodeNumber(DataOffset,4,false) .. IconGroup:sub(o+2,-1)
     
     o = o + 4
     
@@ -375,7 +375,7 @@ local function addGroupIcon(ResourcesTree,GroupID,icoFile)
   
   local Count = decodeNumber(icoFile:read(2),true)
   
-  IconGroup[#IconGroup+1] = encodeNumber(Count,2)
+  IconGroup[#IconGroup+1] = encodeNumber(Count,2,false)
   
   for i=1,Count do
     IconGroup[#IconGroup+1] = icoFile:read(8)
@@ -383,14 +383,14 @@ local function addGroupIcon(ResourcesTree,GroupID,icoFile)
     local IcoSize = decodeNumber(icoFile:read(4),true)
     local IcoOffset = decodeNumber(icoFile:read(4),true)
     
-    IconGroup[#IconGroup+1] = encodeNumber(IcoSize,4)
+    IconGroup[#IconGroup+1] = encodeNumber(IcoSize,4,false)
     
     --Find an empty slot for the icon data
     while ResourcesTree["ICON"][NextIconID] do
       NextIconID = NextIconID + 1
     end
     
-    IconGroup[#IconGroup+1] = encodeNumber(NextIconID,2)
+    IconGroup[#IconGroup+1] = encodeNumber(NextIconID,2,false)
     
     local ReturnOffset = icoFile:tell()
     
@@ -430,7 +430,7 @@ local function parseCOFFHeader(exeFile)
   
   exeFile:read(2) --Skip Machine.
   
-  values.NumberOfSections = decodeNumber(exeFile:read(2))
+  values.NumberOfSections = decodeNumber(exeFile:read(2),true)
   
   exeFile:read(16) --Skip 3 long values (12 bytes) and 2 short values (4 bytes).
   
@@ -440,7 +440,7 @@ end
 local function parsePEOptHeader(exeFile)
   local values = {}
   
-  local PEOptionalHeaderSignature = decodeNumber(exeFile:read(2))
+  local PEOptionalHeaderSignature = decodeNumber(exeFile:read(2),true)
   
   values.x86, values.x64 = false, false --Executable arch
   
@@ -454,7 +454,7 @@ local function parsePEOptHeader(exeFile)
   
   exeFile:read(values.x64 and 106 or 90) --Skip 106 bytes for x64, and 90 bytes for x86
   
-  values.NumberOfRvaAndSizes = decodeNumber(exeFile:read(4))
+  values.NumberOfRvaAndSizes = decodeNumber(exeFile:read(4),true)
   
   return values
 end
@@ -463,7 +463,7 @@ local function parseDataTables(exeFile,NumberOfRvaAndSizes)
   local DataDirectories = {}
   
   for i=1, NumberOfRvaAndSizes do
-    DataDirectories[i] = {decodeNumber(exeFile:read(4)), decodeNumber(exeFile:read(4))}
+    DataDirectories[i] = {decodeNumber(exeFile:read(4),true), decodeNumber(exeFile:read(4),true)}
     print("DataDirectory #"..i,DataDirectories[i][1],DataDirectories[i][2])
   end
   
@@ -472,8 +472,8 @@ end
 
 local function writeDataDirectories(exeFile, DataDirectories)
   for i, Directory in ipairs(DataDirectories) do
-    exeFile:write(encodeNumber(Directory[1],4,true))
-    exeFile:write(encodeNumber(Directory[2],4,true))
+    exeFile:write(encodeNumber(Directory[1],4,false))
+    exeFile:write(encodeNumber(Directory[2],4,false))
   end
 end
 
@@ -493,15 +493,15 @@ local function parseSectionsTable(exeFile,NumberOfSections)
       end
     end
     
-    Section.VirtualSize = decodeNumber(exeFile:read(4))
-    Section.VirtualAddress = decodeNumber(exeFile:read(4))
-    Section.SizeOfRawData = decodeNumber(exeFile:read(4))
-    Section.PointerToRawData = decodeNumber(exeFile:read(4))
-    Section.PointerToRelocations = decodeNumber(exeFile:read(4))
-    Section.PointerToLinenumbers = decodeNumber(exeFile:read(4))
-    Section.NumberOfRelocations = decodeNumber(exeFile:read(2))
-    Section.NumberOfLinenumbers = decodeNumber(exeFile:read(2))
-    Section.Characteristics = decodeNumber(exeFile:read(4))
+    Section.VirtualSize = decodeNumber(exeFile:read(4),true)
+    Section.VirtualAddress = decodeNumber(exeFile:read(4),true)
+    Section.SizeOfRawData = decodeNumber(exeFile:read(4),true)
+    Section.PointerToRawData = decodeNumber(exeFile:read(4),true)
+    Section.PointerToRelocations = decodeNumber(exeFile:read(4),true)
+    Section.PointerToLinenumbers = decodeNumber(exeFile:read(4),true)
+    Section.NumberOfRelocations = decodeNumber(exeFile:read(2),true)
+    Section.NumberOfLinenumbers = decodeNumber(exeFile:read(2),true)
+    Section.Characteristics = decodeNumber(exeFile:read(4),true)
     
     for k,v in pairs(Section) do
       print(k,v)
@@ -516,15 +516,15 @@ end
 local function writeSectionsTable(exeFile,Sections)
   for id, Section in ipairs(Sections) do
     exeFile:write(Section.Name.."\0")
-    exeFile:write(Section.VirtualSize,4,true)
-    exeFile:write(Section.VirtualAddress,4,true)
-    exeFile:write(Section.SizeOfRawData,4,true)
-    exeFile:write(Section.PointerToRawData,4,true)
-    exeFile:write(Section.PointerToRelocations,4,true)
-    exeFile:write(Section.PointerToLinenumbers,4,true)
-    exeFile:write(Section.NumberOfRelocations,2,true)
-    exeFile:write(Section.NumberOfLinenumbers,2,true)
-    exeFile:write(Section.Characteristics,4,true)
+    exeFile:write(encodeNumber(Section.VirtualSize,4,true))
+    exeFile:write(encodeNumber(Section.VirtualAddress,4,true))
+    exeFile:write(encodeNumber(Section.SizeOfRawData,4,true))
+    exeFile:write(encodeNumber(Section.PointerToRawData,4,true))
+    exeFile:write(encodeNumber(Section.PointerToRelocations,4,true))
+    exeFile:write(encodeNumber(Section.PointerToLinenumbers,4,true))
+    exeFile:write(encodeNumber(Section.NumberOfRelocations,2,true))
+    exeFile:write(encodeNumber(Section.NumberOfLinenumbers,2,true))
+    exeFile:write(encodeNumber(Section.Characteristics,4,true))
   end
 end
 
