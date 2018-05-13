@@ -515,16 +515,16 @@ end
 
 local function writeSectionsTable(exeFile,Sections)
   for id, Section in ipairs(Sections) do
-    exeFile:write(Section.Name.."\0")
-    exeFile:write(encodeNumber(Section.VirtualSize,4,true))
-    exeFile:write(encodeNumber(Section.VirtualAddress,4,true))
-    exeFile:write(encodeNumber(Section.SizeOfRawData,4,true))
-    exeFile:write(encodeNumber(Section.PointerToRawData,4,true))
-    exeFile:write(encodeNumber(Section.PointerToRelocations,4,true))
-    exeFile:write(encodeNumber(Section.PointerToLinenumbers,4,true))
-    exeFile:write(encodeNumber(Section.NumberOfRelocations,2,true))
-    exeFile:write(encodeNumber(Section.NumberOfLinenumbers,2,true))
-    exeFile:write(encodeNumber(Section.Characteristics,4,true))
+    exeFile:write(Section.Name..string.rep("\0",8-#Section.Name))
+    exeFile:write(encodeNumber(Section.VirtualSize,4,false))
+    exeFile:write(encodeNumber(Section.VirtualAddress,4,false))
+    exeFile:write(encodeNumber(Section.SizeOfRawData,4,false))
+    exeFile:write(encodeNumber(Section.PointerToRawData,4,false))
+    exeFile:write(encodeNumber(Section.PointerToRelocations,4,false))
+    exeFile:write(encodeNumber(Section.PointerToLinenumbers,4,false))
+    exeFile:write(encodeNumber(Section.NumberOfRelocations,2,false))
+    exeFile:write(encodeNumber(Section.NumberOfLinenumbers,2,false))
+    exeFile:write(encodeNumber(Section.Characteristics,4,false))
   end
 end
 
