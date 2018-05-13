@@ -144,7 +144,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   local NumberOfNameEntries = decodeNumber(exeFile:read(2),true)
   local NumberOfIDEntries = decodeNumber(exeFile:read(2),true)
   
-  print("--readResourceDirectoryTable",RootOffset,Level,MajorVersion,MinorVersion,TimeDateStamp,NumberOfNameEntries,NumberOfIDEntries)
+  --print("--readResourceDirectoryTable",RootOffset,Level,MajorVersion,MinorVersion,TimeDateStamp,NumberOfNameEntries,NumberOfIDEntries)
   
   --Parse Entries
   for i=1,NumberOfNameEntries+NumberOfIDEntries do
@@ -164,7 +164,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       --Decode UTF-16LE string
       Name = decodeUTF16(exeFile:read(NameLength*2))
       
-      print("Name Entry",Name)
+      --print("Name Entry",Name)
     else
       --Name is an ID
       Name = band(Name,0xFFFF)
@@ -174,14 +174,14 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
           Name = resourcesTypes[Name]
         end
       end
-      print("ID Entry",Name)
+      --print("ID Entry",Name)
     end
     
     if band(Offset,0x80000000) ~= 0 then
       --Another directory
       exeFile:seek(RootOffset + band(Offset,0x7FFFFFFF))
       
-      print("Another Directory")
+      --print("Another Directory")
       
       Tree[Name] = readResourceDirectoryTable(exeFile,Sections,RootOffset,Level+1)
     else
@@ -192,7 +192,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       local DataSize = decodeNumber(exeFile:read(4),true)
       local DataCodepage = decodeNumber(exeFile:read(4),true)
       
-      print("DATA",DataRVA,DataSize,DataCodepage)
+      --print("DATA",DataRVA,DataSize,DataCodepage)
       if DataCodepage ~= 0 then print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!") end
       
       local DataOffset = convertRVA2Offset(DataRVA,Sections)
@@ -205,7 +205,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
     exeFile:seek(ReturnOffset)
   end
   
-  print("---Directory end")
+  --print("---Directory end")
   
   return Tree
 end
@@ -466,7 +466,12 @@ local function parsePEOptHeader(exeFile)
     error("ROM images are not supported !",3)
   end
   
-  exeFile:read(values.x64 and 106 or 90) --Skip 106 bytes for x64, and 90 bytes for x86
+  exeFile:read(32-2) --Skip 30 bytes
+  
+  values.SectionAlignment = decodeNumber(exeFile:read(4),true)
+  values.FileAlignment = decodeNumber(exeFile:read(4),true)
+  
+  exeFile:read(values.x64 and 108-2-38 or 92-2-38) --Skip 106 bytes for x64, and 90 bytes for x86
   
   values.NumberOfRvaAndSizes = decodeNumber(exeFile:read(4),true)
   
@@ -478,7 +483,7 @@ local function parseDataTables(exeFile,NumberOfRvaAndSizes)
   
   for i=1, NumberOfRvaAndSizes do
     DataDirectories[i] = {decodeNumber(exeFile:read(4),true), decodeNumber(exeFile:read(4),true)}
-    print("DataDirectory #"..i,DataDirectories[i][1],DataDirectories[i][2])
+    --print("DataDirectory #"..i,DataDirectories[i][1],DataDirectories[i][2])
   end
   
   return DataDirectories
@@ -495,7 +500,7 @@ local function parseSectionsTable(exeFile,NumberOfSections)
   local Sections = {}
   
   for i=1, NumberOfSections do
-    print("\n------=Section=------",i)
+    --print("\n------=Section=------",i)
     
     local Section = {}
     
@@ -518,7 +523,7 @@ local function parseSectionsTable(exeFile,NumberOfSections)
     Section.Characteristics = decodeNumber(exeFile:read(4),true)
     
     for k,v in pairs(Section) do
-      print(k,v)
+      --print(k,v)
     end
     
     Sections[i] = Section
@@ -642,7 +647,8 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   local NumberOfSections = parseCOFFHeader(exeFile).NumberOfSections
   
   --PE Optional Header
-  local NumberOfRvaAndSizes = parsePEOptHeader(exeFile).NumberOfRvaAndSizes
+  local PEOptHeader = parsePEOptHeader(exeFile)
+  local NumberOfRvaAndSizes = PEOptHeader.NumberOfRvaAndSizes
   
   local DataDirectoriesOffset = exeFile:tell() --Where the DataDirectories are stored
   
@@ -669,12 +675,10 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   
   writeTree(ResourcesTree,"/!NEW RES/")
   
-  print("Finished reading...")
-  
   local GroupID = getAnyKey(ResourcesTree["GROUP_ICON"])
   
-  removeGroupIcon(ResourcesTree,GroupID) print("Removed Icon...")
-  addGroupIcon(ResourcesTree,GroupID,icoFile) print("Added new Icon...")
+  removeGroupIcon(ResourcesTree,GroupID)
+  addGroupIcon(ResourcesTree,GroupID,icoFile)
   
   local RSRC_ID = 0
   
@@ -685,23 +689,23 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
     end
   end
   
-  print("Rebuilding resources section...")
-  
   SectionsData[RSRC_ID] = buildResourcesDirectoryTable(ResourcesTree,Sections[RSRC_ID].VirtualAddress)
   
-  print("Patching data tables...")
+  local function Align(value,file)
+    local aligner = PEOptHeader[file and "FileAlignment" or "SectionAlignment"]
+    return math.ceil(value/aligner)*aligner
+  end
   
-  local NewRSRCSize = #SectionsData[RSRC_ID]
+  SectionsData[RSRC_ID] = SectionsData[RSRC_ID] .. string.rep("\0",Align(#SectionsData[RSRC_ID],true)-#SectionsData[RSRC_ID])
+  
+  local NewRSRCSize = Align(#SectionsData[RSRC_ID],true)
   local OldRSRCSize = DataDirectories[3][2]
   local ShiftOffset = NewRSRCSize - OldRSRCSize
   
-  print("NEW OLD OFFSET",NewRSRCSize,OldRSRCSize,ShiftOffset)
-  
   DataDirectories[3][2] = NewRSRCSize
-  --Sections[RSRC_ID].VirtualSize = Sections[RSRC_ID].VirtualSize + ShiftOffset
   Sections[RSRC_ID].SizeOfRawData = Sections[RSRC_ID].SizeOfRawData + ShiftOffset
   
-  --[[local RSRC_Pointer = Sections[RSRC_ID].PointerToRawData
+  local RSRC_Pointer = Sections[RSRC_ID].PointerToRawData
   
   for id, Section in ipairs(Sections) do
     if Sections[id].PointerToRawData > RSRC_Pointer then
@@ -719,19 +723,16 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
     if Directory[1] > Sections[RSRC_ID].VirtualAddress then
       Directory[1] = Directory[1] + ShiftOffset
     end
-  end]]
-  
-  print("Writing the DOS,PE,COFF and PEOpt headers...",DataDirectoriesOffset)
+  end
   
   --Copy the DOS,PE,COFF and PEOpt headers
   exeFile:seek(0)
   newFile:write(exeFile:read(DataDirectoriesOffset))
   
-  print("Writing data directories...") writeDataDirectories(newFile,DataDirectories)
-  print("Writing sections table...") writeSectionsTable(newFile,Sections)
-  print("Writing sections data...") writeSections(newFile,Sections,SectionsData)
-  print("Writing trail data...") newFile:write(TrailData)
-  print("Done")
+  writeDataDirectories(newFile,DataDirectories)
+  writeSectionsTable(newFile,Sections)
+  writeSections(newFile,Sections,SectionsData)
+  newFile:write(TrailData)
   
   return true
 end
