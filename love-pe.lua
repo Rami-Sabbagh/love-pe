@@ -29,13 +29,16 @@ local resourcesTypes = {
   "UNFORMATTED_RESOURCE_DATA",
   "MESSAGE_TABLE",
   "GROUP_CURSOR",
-  "13",
+  13,
   "GROUP_ICON",
-  "15",
+  15,
   "VERSION_INFORMATION",
-  "17","18","19","20","21","22","23",
+  17,18,19,20,21,22,23,
   "MANIFEST"
 }
+for k,v in ipairs(resourcesTypes) do
+  resourcesTypes[v] = k
+end
 
 --==Internal Functions==--
 
@@ -59,7 +62,7 @@ local function encodeNumber(num,len,bigEndian)
   local chars = {}
   
   for i=1,len do
-    chars[#chars+1] = string.char(band(num,255))
+    chars[i] = string.char(band(num,255))
     num = rshift(num,8)
   end
   
@@ -151,7 +154,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
     --Parse name/id for entry
     if band(Name,0x80000000) ~= 0 then
       --Name is a string RVA
-      local NameOffset = convertRVA2Offset(RootOffset + band(Name,0x7FFFFFFF), Sections)
+      local NameOffset = convertRVA2Offset(band(Name,0x7FFFFFFF), Sections)
       
       exeFile:seek(NameOffset)
       
@@ -167,8 +170,6 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
           Name = resourcesTypes[Name]
         end
       end
-      
-      Name = tostring(Name)
     end
     
     if band(Offset,0x80000000) ~= 0 then
@@ -197,6 +198,110 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   return Tree
 end
 
+local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
+  local Data = {}
+  local Offset = 0
+  local Level = 0
+  
+  local function writeDirectory(Directory)
+    local NameEntries, IDEntries = {}, {}
+    
+    Level = Level + 1
+    
+    for k,v in pairs(Directory) do
+      if type(k) == "string" then
+        if Level == 1 and resourcesTypes[k] then
+          IDEntries[#IDEntries+1] = {resourcesTypes[k],v}
+        else
+          NameEntries[#NameEntries+1] = {k,v}
+        end
+      elseif type(k) == "number" then
+        IDEntries[#IDEntries+1] = {k,v}
+      end
+    end
+    
+    --Write the resource directory table
+    Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Characteristics
+    Data[#Data+1] = encodeNumber(os.time(),4,true) Offset = Offset + 4 --Time/Date Stamp
+    Data[#Data+1] = encodeNumber(1,2,true) Offset = Offset + 2 --Major Version
+    Data[#Data+1] = encodeNumber(0,2,true) Offset = Offset + 2 --Minor Version
+    Data[#Data+1] = encodeNumber(#NameEntries,2,true) Offset = Offset + 2 --Number of name entries
+    Data[#Data+1] = encodeNumber(#IDEntries,2,true) Offset = Offset + 2 --Number of ID entries
+    
+    local EntriesID = #Data --Where the entries data start
+    
+    --Pre-Allocate the place for the entries
+    for i=1,#NameEntries+#IDEntries do
+      Data[#Data+1] = ""
+      Data[#Data+1] = ""
+      Offset = Offset + 8
+    end
+    
+    for _, Entry in ipairs(NameEntries) do
+      --Write resource directory string
+      local StringRVA = VirtualAddress+Offset
+      local String = encodeUTF16(Entry[1])
+      
+      Data[#Data+1] = encodeNumber(#String/2,2,true) Offset = Offset + 2 --String Length
+      Data[#Data+1] = String; Offset = Offset + #String --Unicode String
+      
+      Entry[3] = StringRVA + 0x80000000 --A string name
+      Entry[4] = Offset
+      
+      if type(Entry[2]) == "table" then --Sub-directory
+        Entry[4] = Entry[4] + 0x80000000 --Set sub-directory flag
+        writeDirectory(Entry[2])
+      else --Data
+        Data[#Data+1] = encodeNumber(VirtualAddress+Offset+16,4,true) Offset = Offset + 4 --Predict the DataRVA
+        Data[#Data+1] = encodeNumber(#Entry[2],4,true) Offset = Offset + 4 --Size
+        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Codepoint
+        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Reserved
+        Data[#Data+1] = Entry[2]; Offset = Offset + #Entry[2] --The actual data
+      end
+    end
+    
+    for _, Entry in ipairs(IDEntries) do
+      Entry[3] = Entry[1] --The entry id itself
+      Entry[4] = Offset
+      
+      if type(Entry[2]) == "table" then --Sub-directory
+        Entry[4] = Entry[4] + 0x80000000 --Set sub-directory flag
+        writeDirectory(Entry[2])
+      else --Data
+        Data[#Data+1] = encodeNumber(VirtualAddress+Offset+16,4,true) Offset = Offset + 4 --Predict the DataRVA
+        Data[#Data+1] = encodeNumber(#Entry[2],4,true) Offset = Offset + 4 --Size
+        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Codepoint
+        Data[#Data+1] = encodeNumber(0,4,true) Offset = Offset + 4 --Reserved
+        Data[#Data+1] = Entry[2]; Offset = Offset + #Entry[2] --The actual data
+      end
+    end
+    
+    for _, Entry in ipairs(NameEntries) do
+      Data[EntriesID+1] = Entry[3]; EntriesID = EntriesID + 1
+      Data[EntriesID+1] = Entry[4]; EntriesID = EntriesID + 1
+    end
+    
+    for _, Entry in ipairs(IDEntries) do
+      Data[EntriesID+1] = Entry[3]; EntriesID = EntriesID + 1
+      Data[EntriesID+1] = Entry[4]; EntriesID = EntriesID + 1
+    end
+    
+    Level = Level - 1
+    
+  end
+  
+  writeDirectory(ResourcesTree)
+  
+  return table.concat(Data)
+end
+
+local function getAnyKey(t)
+  for k,v in pairs(t) do
+    return k
+  end
+end
+
+
 local function getAnyValue(t)
   for k,v in pairs(t) do
     return v
@@ -205,7 +310,7 @@ end
 
 local function extractGroupIcon(ResourcesTree,GroupID)
   --Icon extraction process
-  local IconGroup = getAnyValue(ResourcesTree["GROUP_ICON"][tostring(GroupID)])
+  local IconGroup = getAnyValue(ResourcesTree["GROUP_ICON"][GroupID])
   
   local Icons = {""}
   
@@ -223,7 +328,7 @@ local function extractGroupIcon(ResourcesTree,GroupID)
     
     local IcoID = decodeNumber(IconGroup:sub(o,o+1),true)
     
-    Icons[#Icons+1] = getAnyValue(ResourcesTree["ICON"][tostring(IcoID)])
+    Icons[#Icons+1] = getAnyValue(ResourcesTree["ICON"][IcoID])
     
     local Length = #Icons[#Icons]
     
@@ -237,6 +342,72 @@ local function extractGroupIcon(ResourcesTree,GroupID)
   Icons[1] = IconGroup
   
   return table.concat(Icons)
+end
+
+local function removeGroupIcon(ResourcesTree,GroupID)
+  local IconGroup = getAnyValue(ResourcesTree["GROUP_ICON"][GroupID])
+  ResourcesTree["GROUP_ICON"][GroupID] = nil --Delete the group icon
+  
+  local o = 5 --String Offset
+  
+  --Read the icon header
+  local Count = decodeNumber(IconGroup:sub(o,o+1),true)
+  
+  o = o+2
+  
+  for i=1,Count do
+    o = o+12
+    
+    local IcoID = decodeNumber(IconGroup:sub(o,o+1),true)
+    
+    ResourcesTree["ICON"][IcoID] = nil
+    
+    o = o + 2
+  end
+end
+
+local function addGroupIcon(ResourcesTree,GroupID,icoFile)
+  local IconGroup = {}
+  local Icons = {}
+  local NextIconID = 1
+  
+  IconGroup[#IconGroup+1] = icoFile:read(4)
+  
+  local Count = decodeNumber(icoFile:read(2),true)
+  
+  IconGroup[#IconGroup+1] = encodeNumber(Count,2)
+  
+  for i=1,Count do
+    IconGroup[#IconGroup+1] = icoFile:read(8)
+    
+    local IcoSize = decodeNumber(icoFile:read(4),true)
+    local IcoOffset = decodeNumber(icoFile:read(4),true)
+    
+    IconGroup[#IconGroup+1] = encodeNumber(IcoSize,4)
+    
+    --Find an empty slot for the icon data
+    while ResourcesTree["ICON"][NextIconID] do
+      NextIconID = NextIconID + 1
+    end
+    
+    IconGroup[#IconGroup+1] = encodeNumber(NextIconID,2)
+    
+    local ReturnOffset = icoFile:tell()
+    
+    icoFile:seek(IcoOffset)
+    
+    ResourcesTree["ICON"][NextIconID] = {[1033] = icoFile:read(IcoSize)}
+    
+    icoFile:seek(ReturnOffset)
+    
+    NextIconID = NextIconID + 1
+  end
+  
+  icoFile:seek(0)
+  
+  IconGroup = table.concat(IconGroup)
+  
+  ResourcesTree["GROUP_ICON"][GroupID] = {[1033] = IconGroup}
 end
 
 local function skipDOSHeader(exeFile)
@@ -288,24 +459,7 @@ local function parsePEOptHeader(exeFile)
   return values
 end
 
---==User API==--
-
-local icapi = {}
-
-function icapi.extractIcon(exeFile)
-  
-  --DOS Header
-  skipDOSHeader(exeFile)
-  
-  --PE Header
-  skipPEHeader(exeFile)
-  
-  --COFF Header
-  local NumberOfSections = parseCOFFHeader(exeFile).NumberOfSections
-  
-  --PE Optional Header
-  local NumberOfRvaAndSizes = parsePEOptHeader(exeFile).NumberOfRvaAndSizes
-  
+local function parseDataTables(exeFile,NumberOfRvaAndSizes)
   local DataDirectories = {}
   
   for i=1, NumberOfRvaAndSizes do
@@ -313,7 +467,17 @@ function icapi.extractIcon(exeFile)
     print("DataDirectory #"..i,DataDirectories[i][1],DataDirectories[i][2])
   end
   
-  --Sections Table
+  return DataDirectories
+end
+
+local function writeDataDirectories(exeFile, DataDirectories)
+  for i, Directory in ipairs(DataDirectories) do
+    exeFile:write(encodeNumber(Directory[1],4,true))
+    exeFile:write(encodeNumber(Directory[2],4,true))
+  end
+end
+
+local function parseSectionsTable(exeFile,NumberOfSections)
   local Sections = {}
   
   for i=1, NumberOfSections do
@@ -346,6 +510,85 @@ function icapi.extractIcon(exeFile)
     Sections[i] = Section
   end
   
+  return Sections
+end
+
+local function writeSectionsTable(exeFile,Sections)
+  for id, Section in ipairs(Sections) do
+    exeFile:write(Section.Name.."\0")
+    exeFile:write(Section.VirtualSize,4,true)
+    exeFile:write(Section.VirtualAddress,4,true)
+    exeFile:write(Section.SizeOfRawData,4,true)
+    exeFile:write(Section.PointerToRawData,4,true)
+    exeFile:write(Section.PointerToRelocations,4,true)
+    exeFile:write(Section.PointerToLinenumbers,4,true)
+    exeFile:write(Section.NumberOfRelocations,2,true)
+    exeFile:write(Section.NumberOfLinenumbers,2,true)
+    exeFile:write(Section.Characteristics,4,true)
+  end
+end
+
+local function readSections(exeFile,Sections)
+  local SectionsData = {}
+  
+  for id, Section in ipairs(Sections) do
+    exeFile:seek(Section.PointerToRawData)
+    SectionsData[id] = exeFile:read(Section.SizeOfRawData)
+  end
+  
+  return SectionsData
+end
+
+local function writeSections(exeFile,Sections,SectionsData)
+  for id, Section in ipairs(Sections) do
+    exeFile:seek(Section.PointerToRawData)
+    exeFile:write(SectionsData[id])
+  end
+end
+
+local function readTrailData(exeFile)
+  
+  local currentPos = exeFile:tell()
+  local size = exeFile:getSize()
+  
+  return exeFile:read(size-currentPos+1)
+  
+end
+
+local function writeTree(tree,path)
+  for k,v in pairs(tree) do
+    if type(v) == "table" then
+      love.filesystem.createDirectory(path..k)
+      writeTree(v,path..k.."/")
+    else
+      love.filesystem.write(path..k,v)
+    end
+  end
+end
+
+--==User API==--
+
+local icapi = {}
+
+function icapi.extractIcon(exeFile)
+  
+  --DOS Header
+  skipDOSHeader(exeFile)
+  
+  --PE Header
+  skipPEHeader(exeFile)
+  
+  --COFF Header
+  local NumberOfSections = parseCOFFHeader(exeFile).NumberOfSections
+  
+  --PE Optional Header
+  local NumberOfRvaAndSizes = parsePEOptHeader(exeFile).NumberOfRvaAndSizes
+  
+  local DataDirectories = parseDataTables(exeFile,NumberOfRvaAndSizes)
+  
+  --Sections Table
+  local Sections = parseSectionsTable(exeFile,NumberOfSections)
+  
   --Calculate the file offset to the resources data directory
   local ResourcesOffset = convertRVA2Offset(DataDirectories[3][1],Sections)
   
@@ -367,21 +610,108 @@ function icapi.extractIcon(exeFile)
     ResourcesTree["GROUP_ICON"][v] = nil
   end
   
-  local function writeTree(tree,path)
-    for k,v in pairs(tree) do
-      if type(v) == "table" then
-        love.filesystem.createDirectory(path..k)
-        writeTree(v,path..k.."/")
-      else
-        love.filesystem.write(path..k,v)
-      end
-    end
-  end
-  
   writeTree(ResourcesTree,"/")
   
   return FirstIcon
   
+end
+
+function icapi.replaceIcon(exeFile,icoFile,newFile)
+  
+  --DOS Header
+  skipDOSHeader(exeFile)
+  
+  --PE Header
+  skipPEHeader(exeFile)
+  
+  --COFF Header
+  local NumberOfSections = parseCOFFHeader(exeFile).NumberOfSections
+  
+  --PE Optional Header
+  local NumberOfRvaAndSizes = parsePEOptHeader(exeFile).NumberOfRvaAndSizes
+  
+  local DataDirectoriesOffset = exeFile:tell() --Where the DataDirectories are stored
+  
+  local DataDirectories = parseDataTables(exeFile,NumberOfRvaAndSizes)
+  
+  --Sections Table
+  local SectionsOffset = exeFile:tell() --Where the sections tables start
+  
+  local Sections = parseSectionsTable(exeFile,NumberOfSections)
+  
+  local SectionsData = readSections(exeFile,Sections)
+  
+  --Trail data
+  local TrailData = readTrailData(exeFile)
+  
+  --Calculate the file offset to the resources data directory
+  local ResourcesOffset = convertRVA2Offset(DataDirectories[3][1],Sections)
+  
+  --Seek into the resources data !
+  exeFile:seek(ResourcesOffset)
+  
+  --Parse the resources data
+  local ResourcesTree = readResourceDirectoryTable(exeFile,Sections,ResourcesOffset,0)
+  
+  print("Finished reading...")
+  
+  local GroupID = getAnyKey(ResourcesTree["GROUP_ICON"])
+  
+  removeGroupIcon(ResourcesTree,GroupID) print("Removed Icon...")
+  addGroupIcon(ResourcesTree,GroupID,icoFile) print("Added new Icon...")
+  
+  local RSRC_ID = 0
+  
+  for k,Section in ipairs(Sections) do
+    if Section.Name == ".rsrc" then
+      RSRC_ID = k
+      break
+    end
+  end
+  
+  print("Rebuilding resources section...")
+  
+  SectionsData[RSRC_ID] = buildResourcesDirectoryTable(ResourcesTree,Sections[RSRC_ID].VirtualAddress)
+  
+  print("Patching data tables...")
+  
+  local NewRSRCSize = #SectionsData[RSRC_ID]
+  local OldRSRCSize = DataDirectories[3][2]
+  local ShiftOffset = NewRSRCSize - OldRSRCSize
+  
+  print("NEW OLD OFFSET",NewRSRCSize,OldRSRCSize,ShiftOffset)
+  
+  DataDirectories[3][2] = NewRSRCSize
+  Sections[RSRC_ID].VirtualSize = Sections[RSRC_ID].VirtualSize + ShiftOffset
+  Sections[RSRC_ID].SizeOfRawData = Sections[RSRC_ID].SizeOfRawData + ShiftOffset
+  
+  local RSRC_Pointer = Sections[RSRC_ID].PointerToRawData
+  
+  for id, Section in ipairs(Sections) do
+    if Sections[id].PointerToRawData > RSRC_Pointer then
+      Sections[id].PointerToRawData = Sections[id].PointerToRawData + ShiftOffset
+    end
+    if Sections[id].PointerToRelocations > RSRC_Pointer then
+      Sections[id].PointerToRelocations = Sections[id].PointerToRelocations + ShiftOffset
+    end
+    if Sections[id].PointerToLinenumbers > RSRC_Pointer then
+      Sections[id].PointerToLinenumbers = Sections[id].PointerToLinenumbers + ShiftOffset
+    end
+  end
+  
+  print("Writing the DOS,PE,COFF and PEOpt headers...",DataDirectoriesOffset)
+  
+  --Copy the DOS,PE,COFF and PEOpt headers
+  exeFile:seek(0)
+  newFile:write(exeFile:read(DataDirectoriesOffset))
+  
+  print("Writing data directories...") writeDataDirectories(newFile,DataDirectories)
+  print("Writing sections table...") writeSectionsTable(newFile,Sections)
+  print("Writing sections data...") writeSections(newFile,Sections,SectionsData)
+  print("Writing trail data...") newFile:write(TrailData)
+  print("Done")
+  
+  return true
 end
 
 return icapi

@@ -6,11 +6,14 @@ function love.load(args)
   love.graphics.setBackgroundColor(1,1,1,1)
   
   local exeFile = assert(love.filesystem.newFile("love.exe","r"))
+  local icoFile = assert(love.filesystem.newFile("test.ico","r"))
+  local newFile = assert(love.filesystem.newFile("result-"..os.time()..".exe","w"))
   
-  local iconData = lovePE.extractIcon(exeFile)
+  local success = lovePE.replaceIcon(exeFile,icoFile,newFile)
   
-  if iconData then
-    love.filesystem.write("Extracted Icon.ico",iconData)
+  if success then
+    newFile:flush()
+    newFile:close()
     love.system.openURL("file://"..love.filesystem.getSaveDirectory())
   end
   
@@ -19,7 +22,7 @@ end
 
 function love.draw()
   love.graphics.setColor(0,0,0,1)
-  love.graphics.printf("Icon extracted",0,200/2-5,300,"center")
+  love.graphics.printf("Replaced Icon Successfully",0,200/2-5,300,"center")
 end
 
 function love.update(dt)
