@@ -6,8 +6,8 @@ function love.load(args)
   love.graphics.setBackgroundColor(1,1,1,1)
   
   local exeFile = assert(love.filesystem.newFile("love.exe","r"))
-  local icoFile = assert(love.filesystem.newFile("test.ico","r"))
-  local newFile = assert(love.filesystem.newFile("result-"..os.time()..".exe","w"))
+  local icoFile = assert(love.filesystem.newFile("Icon.ico","r"))
+  local newFile = assert(love.filesystem.newFile("Patched-"..os.time()..".exe","w"))
   
   local success = lovePE.replaceIcon(exeFile,icoFile,newFile)
   
