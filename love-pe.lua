@@ -585,11 +585,53 @@ local function writeTree(tree,path)
   end
 end
 
+local function newStringFile(data)
+  local str = data or ""
+  
+  local file = {}
+  
+  local pos = 0
+  
+  function file:getSize() return #str end
+  function file:seek(p) pos = p end
+  function file:tell() return pos end
+  function file:read(bytes)
+    if bytes then
+      if pos+bytes > #str then bytes = #str-pos end
+      
+      local substr = str:sub(pos+1,pos+bytes)
+      
+      pos = pos + bytes
+      
+      return substr, bytes
+    else
+      return str
+    end
+  end
+  
+  function file:write(d)
+    if pos+#d > #str then d = d:sub(1,#str-pos) end
+    
+    str = str:sub(1,pos)..d..str:sub(pos+#d+1,-1)
+    
+    pos = pos + #d
+    
+    return #d
+  end
+  
+  function file:flush() end
+  function file:close() end
+  
+  return file
+end
+
 --==User API==--
 
 local icapi = {}
 
 function icapi.extractIcon(exeFile)
+  
+  if type(exeFile) == "string" then exeFile = newStringFile(exeFile) end
   
   --DOS Header
   skipDOSHeader(exeFile)
@@ -636,6 +678,10 @@ function icapi.extractIcon(exeFile)
 end
 
 function icapi.replaceIcon(exeFile,icoFile,newFile)
+  
+  if type(exeFile) == "string" then exeFile = newStringFile(exeFile) end
+  if type(icoFile) == "string" then icoFile = newStringFile(icoFile) end
+  if type(newFile) == "string" or not newFile then newFile = newStringFile(newFile) end
   
   --DOS Header
   skipDOSHeader(exeFile)
@@ -734,7 +780,7 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   writeSections(newFile,Sections,SectionsData)
   newFile:write(TrailData)
   
-  return true
+  return true, newFile
 end
 
 return icapi
