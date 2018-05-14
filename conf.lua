@@ -9,7 +9,7 @@ function love.conf(t)
 
   t.audio.mixwithsystem = true        -- Keep background music playing when opening LOVE (boolean, iOS and Android only)
 
-  t.window.title = "LÖVE Icon-Changer"         -- The window title (string)
+  t.window.title = "LÖVE IconPatcher"         -- The window title (string)
   t.window.icon = nil                 -- Filepath to an image to use as the window's icon (string)
   t.window.width = 300                -- The window width (number)
   t.window.height = 200               -- The window height (number)
