@@ -1,9 +1,22 @@
---love-icon-changer library by RamiLego4Game (Rami Sabbagh)
+--love-pe library by RamiLego4Game (Rami Sabbagh)
 --[[
 - Usage:
 local lovePE = require("love-pe")
 
 local icodata = lovePE.extractIcon(exeFile)
+local success = lovePE.replaceIcon(exeFile,icoFile,newFile)
+
+local icodata = lovePE.extractIcon(exeString)
+local success, newString = lovePE.replaceIcon(exeString,icoString)
+
+- Arguments:
+exeFile -> A LÖVE File object open in read mode and seaked at 0, The source exe file.
+icoFile -> A LÖVE File object open in read mode and seaked at 0, The new ico file.
+newFile -> A LÖVE File object open in write mode and seaked at 0, The new patched exe file.
+
+exeString -> The source exe data as a string.
+icoString -> The new ico data as a string.
+newString -> The new patched exe data as a string.
 
 - Reference:
 Version File Resource: https://msdn.microsoft.com/en-us/library/ms647001(v=vs.85).aspx
@@ -609,7 +622,8 @@ local function newStringFile(data)
     end
   end
   
-  function file:write(d)
+  function file:write(d,s)
+    if s then d = d:sub(1,s) end
     if pos+#d > #str then d = d:sub(1,#str-pos) end
     
     str = str:sub(1,pos)..d..str:sub(pos+#d+1,-1)
@@ -679,6 +693,7 @@ end
 
 function icapi.replaceIcon(exeFile,icoFile,newFile)
   
+  local newFile = newFile
   if type(exeFile) == "string" then exeFile = newStringFile(exeFile) end
   if type(icoFile) == "string" then icoFile = newStringFile(icoFile) end
   if type(newFile) == "string" or not newFile then newFile = newStringFile(newFile) end
@@ -779,8 +794,9 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   writeSectionsTable(newFile,Sections)
   writeSections(newFile,Sections,SectionsData)
   newFile:write(TrailData)
+  newFile:seek(0)
   
-  return true, newFile
+  return true, newFile:read()
 end
 
 return icapi
