@@ -5,9 +5,11 @@ local lovePE = require("love-pe")
 
 local icodata = lovePE.extractIcon(exeFile)
 local success = lovePE.replaceIcon(exeFile,icoFile,newFile)
+local success = lovePE.patchIcon(exeFile,icoFile,newFile)
 
 local icodata = lovePE.extractIcon(exeString)
 local success, newString = lovePE.replaceIcon(exeString,icoString)
+local success, newString = lovePE.patchIcon(exeString,icoString)
 
 - Arguments:
 exeFile -> A LÖVE File object open in read mode and seaked at 0, The source exe file.
