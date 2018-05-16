@@ -24,11 +24,13 @@ LOVE-PE is a WIP program for hacking some resources inside exe files (and possib
 8. Enjoy.
 
 ## Note:
-The tool will mostly fail on any other executable than love, that's because I've done all my testing on `love.exe`, and the result `love.exe` hasn't been tested if it's completely functioning or would crash on some tasks.
+This version replaces the icon by _patching_ the executable, instead of _rebuilding it_, so it has much more stability, it could only break the checksum which is 0 for more executables.
 
-Also do note that I'm not recalculating the checksum (which look like a dummy value for most executables), nor the `ImageSize`, so that some "Antiviruses" may find it as suspicious file.
+The resulting executable will have the exact size of the old one.
 
-I did find a problem myself that 7-ZIP can no longer read the resources section of the patched .exe (Yes, 7-ZIP can browse the `.exe`, at least on windows)
+The new icon should contain the same image sizes of the exe one, otherwise the non-matching images won't be updated.
+
+And because .ico uses bmp format, then as long as the .ico has the same images sizes and bpp then they will have the same file size.
 
 When reporting a non working `.exe`, please upload the `.exe` and `.ico` and create a github issue: https://github.com/RamiLego4Game/love-pe/issues
 
