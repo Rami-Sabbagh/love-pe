@@ -780,12 +780,6 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
     end
   end
   
-  for id, Directory in ipairs(DataDirectories) do
-    if Directory[1] > Sections[RSRC_ID].VirtualAddress then
-      Directory[1] = Directory[1] + ShiftOffset
-    end
-  end
-  
   --Copy the DOS,PE,COFF and PEOpt headers
   exeFile:seek(0)
   newFile:write(exeFile:read(DataDirectoriesOffset))
