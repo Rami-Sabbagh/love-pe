@@ -48,12 +48,12 @@ local icodata = lovePE.extractIcon(exeString)
 local success, newString = lovePE.replaceIcon(exeString,icoString)
 local success, newString = lovePE.patchIcon(exeString,icoString)
 
-- Arguments:
+--[[ Arguments:
 exeFile -> A LÖVE File object open in read mode and seaked at 0, The source exe file.
 icoFile -> A LÖVE File object open in read mode and seaked at 0, The new ico file.
 newFile -> A LÖVE File object open in write mode and seaked at 0, The new patched exe file.
 
 exeString -> The source exe data as a string.
 icoString -> The new ico data as a string.
-newString -> The new patched exe data as a string.
+newString -> The new patched exe data as a string.]]
 ```
