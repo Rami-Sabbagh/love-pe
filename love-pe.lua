@@ -55,6 +55,47 @@ end
 
 --==Internal Functions==--
 
+local function newStringFile(data)
+  local str = data or ""
+  
+  local file = {}
+  
+  local pos = 0
+  
+  function file:getSize() return #str end
+  function file:seek(p) pos = p end
+  function file:tell() return pos end
+  function file:read(bytes)
+    if bytes then
+      if pos+bytes > #str then bytes = #str-pos end
+      
+      local substr = str:sub(pos+1,pos+bytes)
+      
+      pos = pos + bytes
+      
+      return substr, bytes
+    else
+      return str
+    end
+  end
+  
+  function file:write(d,s)
+    if s then d = d:sub(1,s) end
+    if pos+#d > #str then d = d:sub(1,#str-pos) end
+    
+    str = str:sub(1,pos)..d..str:sub(pos+#d+1,-1)
+    
+    pos = pos + #d
+    
+    return #d
+  end
+  
+  function file:flush() end
+  function file:close() end
+  
+  return file
+end
+
 local function decodeNumber(str,littleEndian)
   local num = 0
   
@@ -148,7 +189,7 @@ local function convertRVA2Offset(RVA,Sections)
 end
 
 local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
-  local Tree = {}
+  local Tree, TreeOffsets = {}, {}
   
   local Characteristics = decodeNumber(exeFile:read(4),true)
   local TimeDateStamp = decodeNumber(exeFile:read(4),true)
@@ -196,7 +237,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       
       --print("Another Directory")
       
-      Tree[Name] = readResourceDirectoryTable(exeFile,Sections,RootOffset,Level+1)
+      Tree[Name], TreeOffsets[Name] = readResourceDirectoryTable(exeFile,Sections,RootOffset,Level+1)
     else
       --Data offset
       exeFile:seek(RootOffset + band(Offset,0x7FFFFFFF))
@@ -213,6 +254,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
       exeFile:seek(DataOffset)
       
       Tree[Name] = exeFile:read(DataSize)
+      TreeOffsets[Name] = RootOffset + band(Offset,0x7FFFFFFF)
     end
     
     exeFile:seek(ReturnOffset)
@@ -220,7 +262,7 @@ local function readResourceDirectoryTable(exeFile,Sections,RootOffset,Level)
   
   --print("---Directory end")
   
-  return Tree
+  return Tree, TreeOffsets
 end
 
 local function buildResourcesDirectoryTable(ResourcesTree,VirtualAddress)
@@ -437,6 +479,85 @@ local function addGroupIcon(ResourcesTree,GroupID,icoFile)
   ResourcesTree["GROUP_ICON"][GroupID] = {[1033] = IconGroup}
 end
 
+local function patchGroupIcon(ResourcesTree, ResourcesOffsets, Sections, icoFile, exeFile, newFile, GroupID)
+  --Read resources group icon
+  local IconGroup = getAnyValue(ResourcesTree["GROUP_ICON"][GroupID])
+  local IconGroupFile = newStringFile(IconGroup)
+  
+  IconGroupFile:read(4) --Skip 4 bytes
+  
+  local ExeImagesCount = decodeNumber(IconGroupFile:read(2),true)
+  
+  local ExeImagesDimensions = {}
+  
+  for i=1,ExeImagesCount do
+    local ImgWidth = decodeNumber(IconGroupFile:read(1),true)
+    local ImgHeight = decodeNumber(IconGroupFile:read(1),true)
+    
+    if ImgWidth == 0 then ImgWidth = 256 end
+    if ImgHeight == 0 then ImgHeight = 256 end
+    
+    IconGroupFile:read(10) --Skip 10 bytes
+    
+    local ImgID = decodeNumber(IconGroupFile:read(2),true)
+    
+    ExeImagesDimensions[string.format("%dx%d",ImgWidth,ImgHeight)] = ImgID
+  end
+  
+  --Read ico
+  icoFile:read(4) --Skip 4 bytes
+  
+  local icoImagesCount = decodeNumber(icoFile:read(2),true)
+  
+  local NewImages = {}
+  
+  for i=1, icoImagesCount do
+    local ImgWidth = decodeNumber(icoFile:read(1),true)
+    local ImgHeight = decodeNumber(icoFile:read(1),true)
+    
+    if ImgWidth == 0 then ImgWidth = 256 end
+    if ImgHeight == 0 then ImgHeight = 256 end
+    
+    icoFile:read(6) --Skip 6 bytes
+    
+    local ImgSize = decodeNumber(icoFile:read(4),true)
+    local ImgOffset = decodeNumber(icoFile:read(4),true)
+    
+    local ReturnOffset = icoFile:tell()
+    
+    icoFile:seek(ImgOffset)
+    
+    local ImgData = icoFile:read(ImgSize)
+    
+    icoFile:seek(ReturnOffset)
+    
+    local IDStr = string.format("%dx%d",ImgWidth,ImgHeight)
+    
+    if ExeImagesDimensions[IDStr] then
+      NewImages[ExeImagesDimensions[IDStr]] = ImgData
+    end
+  end
+  
+  --Replace icons
+  for id, imgData in pairs(NewImages) do
+    local EntryOffset = ResourcesOffsets["ICON"][id][1033]
+    
+    exeFile:seek(EntryOffset)
+    
+    local DataRVA = decodeNumber(exeFile:read(4),true)
+    
+    newFile:seek(exeFile:tell())
+    
+    newFile:write(encodeNumber(#imgData,4,false)) --Write the new icon image size
+    
+    local DataOffset = convertRVA2Offset(DataRVA,Sections)
+    
+    newFile:seek(DataOffset)
+    
+    newFile:write(imgData) --Write the new image data
+  end
+end
+
 local function skipDOSHeader(exeFile)
   if exeFile:read(2) ~= "MZ" then error("This is not an executable file !",3) end
   
@@ -598,47 +719,6 @@ local function writeTree(tree,path)
   end
 end
 
-local function newStringFile(data)
-  local str = data or ""
-  
-  local file = {}
-  
-  local pos = 0
-  
-  function file:getSize() return #str end
-  function file:seek(p) pos = p end
-  function file:tell() return pos end
-  function file:read(bytes)
-    if bytes then
-      if pos+bytes > #str then bytes = #str-pos end
-      
-      local substr = str:sub(pos+1,pos+bytes)
-      
-      pos = pos + bytes
-      
-      return substr, bytes
-    else
-      return str
-    end
-  end
-  
-  function file:write(d,s)
-    if s then d = d:sub(1,s) end
-    if pos+#d > #str then d = d:sub(1,#str-pos) end
-    
-    str = str:sub(1,pos)..d..str:sub(pos+#d+1,-1)
-    
-    pos = pos + #d
-    
-    return #d
-  end
-  
-  function file:flush() end
-  function file:close() end
-  
-  return file
-end
-
 --==User API==--
 
 local icapi = {}
@@ -789,6 +869,56 @@ function icapi.replaceIcon(exeFile,icoFile,newFile)
   writeSections(newFile,Sections,SectionsData)
   newFile:write(TrailData)
   newFile:seek(0)
+  
+  return true, newFile:read()
+end
+
+function icapi.patchIcon(exeFile, icoFile, newFile)
+  local newFile = newFile
+  if type(exeFile) == "string" then exeFile = newStringFile(exeFile) end
+  if type(icoFile) == "string" then icoFile = newStringFile(icoFile) end
+  if type(newFile) == "string" or not newFile then newFile = newStringFile(newFile) end
+  
+  --DOS Header
+  skipDOSHeader(exeFile)
+  
+  --PE Header
+  skipPEHeader(exeFile)
+  
+  --COFF Header
+  local NumberOfSections = parseCOFFHeader(exeFile).NumberOfSections
+  
+  --PE Optional Header
+  local PEOptHeader = parsePEOptHeader(exeFile)
+  local NumberOfRvaAndSizes = PEOptHeader.NumberOfRvaAndSizes
+  
+  local DataDirectoriesOffset = exeFile:tell() --Where the DataDirectories are stored
+  
+  local DataDirectories = parseDataTables(exeFile,NumberOfRvaAndSizes)
+  
+  --Sections Table
+  local SectionsOffset = exeFile:tell() --Where the sections tables start
+  
+  local Sections = parseSectionsTable(exeFile,NumberOfSections)
+  
+  local SectionsData = readSections(exeFile,Sections)
+  
+  --Calculate the file offset to the resources data directory
+  local ResourcesOffset = convertRVA2Offset(DataDirectories[3][1],Sections)
+  
+  --Seek into the resources data !
+  exeFile:seek(ResourcesOffset)
+  
+  --Parse the resources data
+  local ResourcesTree, ResourcesOffsets = readResourceDirectoryTable(exeFile,Sections,ResourcesOffset,0)
+  
+  local GroupID = getAnyKey(ResourcesTree["GROUP_ICON"])
+  
+  exeFile:seek(0)
+  newFile:write(exeFile:read())
+  newFile:seek(0)
+  
+  patchGroupIcon(ResourcesTree,ResourcesOffsets,Sections,icoFile,exeFile,newFile,GroupID)
   
   return true, newFile:read()
 end

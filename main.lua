@@ -11,7 +11,7 @@ function love.load(args)
   local icoFile = assert(love.filesystem.newFile("Icon.ico","r"))
   local newFile = assert(love.filesystem.newFile("Patched-"..os.time()..".exe","w"))
   
-  local success = lovePE.replaceIcon(exeFile,icoFile,newFile)
+  local success = lovePE.patchIcon(exeFile,icoFile,newFile)
   
   if success then
     newFile:flush()
@@ -51,13 +51,13 @@ function love.filedropped(file)
   else return end
   
   if exeFile and icoFile then
-    local filename = exeFile:getFilename():sub(1,-5):gsub("\\","/") print(filename)
-    local lastSlash = string.find(filename:reverse(),"/") print(lastSlash)
-    if lastSlash then filename = filename:sub(#filename-lastSlash+2,-1) end print(filename)
+    local filename = exeFile:getFilename():sub(1,-5):gsub("\\","/")
+    local lastSlash = string.find(filename:reverse(),"/")
+    if lastSlash then filename = filename:sub(#filename-lastSlash+2,-1) end
     
     local newFile = assert(love.filesystem.newFile(os.time().."_"..filename..".exe","w"))
     
-    lovePE.replaceIcon(exeFile,icoFile,newFile)
+    lovePE.patchIcon(exeFile,icoFile,newFile)
     
     newFile:flush() newFile:close()
     exeFile:close() icoFile:close()
